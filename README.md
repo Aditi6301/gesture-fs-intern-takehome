@@ -15,7 +15,7 @@ downloads ~1.2GB of models, then they're cached.
 
 ```bash
 python -m src.pipeline --query "How much does the Growth package cost?"  # single question
-pytest tests/ -v                                                         # 28 tests
+pytest tests/ -v                                                         # 33 tests
 ```
 
 <details>
@@ -52,10 +52,11 @@ every question I tested. A production version would filter on
 sources, so I kept the specified behavior.
 
 **Answer length.** `flan-t5-base` is terse — "Can I cancel early?" returns
-`Yes.` rather than a full sentence. I verified the correct context reaches the
-model, so this is the 250M-parameter model finishing its thought and emitting
-EOS, not the pipeline truncating or the retrieval missing. Raising
-`max_new_tokens` has no effect for the same reason.
+`Yes.` rather than a full sentence. This is the model, not the pipeline. I
+re-ran three questions at `max_new_tokens` of 150, 250 and 512: output was
+byte-identical at every setting, and generation stopped on the EOS token after
+3–16 tokens, nowhere near the ceiling. The correct context reaches the model;
+it just considers the answer complete. Raising the limit changes nothing.
 
 **Prompt budget.** `get_llm()` truncates at 512 tokens, and the question sits
 at the *end* of the template — so an over-long context would silently clip it.
@@ -63,12 +64,12 @@ I measured this across a range of questions: the worst case was 376 tokens, so
 there is comfortable headroom at k=3 and no workaround is needed.
 
 **Bonus items.** All four: error handling (empty input, missing `--data-dir`,
-invalid `-k`, EOF/Ctrl-C), a `--query` flag, 18 extra tests in
+invalid `-k`, EOF/Ctrl-C), a `--query` flag, 23 extra tests in
 `tests/test_pipeline_extra.py`, and type hints throughout.
 
 **Environment note.** `requirements.txt` is unpinned, so on Python 3.14 it
 resolved to `transformers` 5.x and `torch` 2.13 — well ahead of what the brief
-assumed. All 28 tests pass there. I left the file untouched rather than pin it,
+assumed. All 33 tests pass there. I left the file untouched rather than pin it,
 since it was provided.
 
 ## 🎯 Objective
