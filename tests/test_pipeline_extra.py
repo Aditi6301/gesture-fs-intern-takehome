@@ -99,6 +99,39 @@ class TestRetrievalMechanics:
 
 
 # ────────────────────────────────
+# Source attribution
+# ────────────────────────────────
+class TestSourceFiles:
+    def test_one_filename_per_source(self, vector_store, echo_llm):
+        result = ask_question(vector_store, echo_llm, "What is the Growth package?")
+        assert len(result["source_files"]) == len(result["sources"])
+
+    def test_filenames_are_bare_basenames(self, vector_store, echo_llm):
+        result = ask_question(vector_store, echo_llm, "Do you offer SEO?")
+        for name in result["source_files"]:
+            assert name.endswith(".txt")
+            assert os.sep not in name, "should be a filename, not a path"
+
+    def test_filenames_exist_in_the_data_dir(self, vector_store, echo_llm):
+        on_disk = {n for n in os.listdir(DATA_DIR) if n.endswith(".txt")}
+        result = ask_question(vector_store, echo_llm, "How does onboarding work?")
+        assert set(result["source_files"]) <= on_disk
+
+    def test_pricing_question_cites_pricing_file(self, vector_store, echo_llm):
+        result = ask_question(vector_store, echo_llm, "How much does the Growth package cost?")
+        assert result["source_files"][0] == "pricing.txt"
+
+    def test_missing_metadata_falls_back_to_unknown(self, echo_llm):
+        class Bare:
+            page_content = "text with no metadata"
+            metadata = {}
+
+        store = SimpleNamespace(similarity_search=lambda q, k=3: [Bare()])
+        result = ask_question(store, echo_llm, "anything")
+        assert result["source_files"] == ["unknown"]
+
+
+# ────────────────────────────────
 # Retrieval quality vs. distractor docs
 # ────────────────────────────────
 class TestDistractorDocuments:
@@ -138,6 +171,17 @@ class TestFormatResult:
     def test_handles_empty_sources(self):
         out = format_result({"answer": "no idea", "sources": []})
         assert "💬 Answer: no idea" in out
+
+    def test_cites_the_source_file(self):
+        out = format_result(
+            {"answer": "x", "sources": ["alpha"], "source_files": ["pricing.txt"]}
+        )
+        assert "1. [pricing.txt] alpha" in out
+
+    def test_works_without_source_files(self):
+        """format_result predates source_files; it must not require them."""
+        out = format_result({"answer": "x", "sources": ["alpha"]})
+        assert "1. alpha" in out
 
 
 # ────────────────────────────────

@@ -70,6 +70,16 @@ Answer:"""
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # TODO 1: Implement ask_question
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+def _source_file(doc: Any) -> str:
+    """Filename a retrieved chunk came from, e.g. 'pricing.txt'.
+
+    TextLoader records the path it read in metadata["source"]; fall back to
+    "unknown" so a document without metadata can still be displayed.
+    """
+    path = getattr(doc, "metadata", {}).get("source", "")
+    return os.path.basename(path) if path else "unknown"
+
+
 def ask_question(
     vector_store: Any,
     llm: Callable[[str], List[Dict[str, str]]],
@@ -85,9 +95,11 @@ def ask_question(
         k: How many chunks to retrieve
 
     Returns:
-        dict with two keys:
-            "answer"  -> str: the generated answer
-            "sources" -> list[str]: the chunk texts that were retrieved
+        dict with three keys:
+            "answer"       -> str: the generated answer
+            "sources"      -> list[str]: the chunk texts that were retrieved
+            "source_files" -> list[str]: the file each chunk came from,
+                              positionally aligned with "sources"
 
     Raises:
         ValueError: if the question is empty or only whitespace.
@@ -100,12 +112,14 @@ def ask_question(
     # 1. Retrieve the k most semantically similar chunks.
     docs = vector_store.similarity_search(question, k=k)
     sources = [doc.page_content for doc in docs]
+    source_files = [_source_file(doc) for doc in docs]
 
     # Nothing indexed (or nothing similar) — don't invent an answer.
     if not sources:
         return {
             "answer": "I don't have enough information to answer that.",
             "sources": [],
+            "source_files": [],
         }
 
     # 2/3. Build the grounded prompt from the retrieved context.
@@ -116,7 +130,7 @@ def ask_question(
     result = llm(prompt)
     answer = result[0]["generated_text"].strip()
 
-    return {"answer": answer, "sources": sources}
+    return {"answer": answer, "sources": sources, "source_files": source_files}
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -124,12 +138,15 @@ def ask_question(
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 def format_result(result: Dict[str, Any], preview: int = SOURCE_PREVIEW_CHARS) -> str:
     """Render an ask_question() result for the terminal."""
+    files = result.get("source_files") or []
     lines = ["", "📄 Sources:"]
     for i, source in enumerate(result["sources"], start=1):
         text = " ".join(source.split())  # collapse newlines for a tidy preview
         if len(text) > preview:
             text = text[:preview].rstrip() + "..."
-        lines.append(f"  {i}. {text}")
+        # Cite the file when we have it; older callers may pass sources alone.
+        origin = f"[{files[i - 1]}] " if i <= len(files) else ""
+        lines.append(f"  {i}. {origin}{text}")
     lines.append("")
     lines.append(f"💬 Answer: {result['answer']}")
     return "\n".join(lines)
