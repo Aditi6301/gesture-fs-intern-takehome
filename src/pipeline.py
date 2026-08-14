@@ -19,6 +19,11 @@ from src.knowledge_base import build_knowledge_base
 # Number of chunks to retrieve per question.
 TOP_K = 3
 
+# Characters of each source shown in the CLI before truncating.
+SOURCE_PREVIEW_CHARS = 200
+
+EXIT_COMMANDS = {"quit", "exit", "q"}
+
 
 # ──────────────────────────────────────────────
 # Provided: local LLM (no API key needed)
@@ -92,23 +97,41 @@ def ask_question(vector_store, llm, question: str) -> dict:
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # TODO 2: Complete the interactive loop
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-def main():
-    """Interactive Q&A loop.
+def format_result(result: dict, preview: int = SOURCE_PREVIEW_CHARS) -> str:
+    """Render an ask_question() result for the terminal."""
+    lines = ["", "📄 Sources:"]
+    for i, source in enumerate(result["sources"], start=1):
+        text = " ".join(source.split())  # collapse newlines for a tidy preview
+        if len(text) > preview:
+            text = text[:preview].rstrip() + "..."
+        lines.append(f"  {i}. {text}")
+    lines.append("")
+    lines.append(f"💬 Answer: {result['answer']}")
+    return "\n".join(lines)
 
-    Steps:
-      1. Build the knowledge base using build_knowledge_base()
-         with the data/ directory path.
-      2. Load the LLM using get_llm().
-      3. Start a loop that:
-         - Prompts the user for a question with input()
-         - Exits if they type "quit"
-         - Calls ask_question() with their input
-         - Prints the retrieved sources and the answer
-    """
+
+def main():
+    """Interactive Q&A loop."""
     data_dir = os.path.join(os.path.dirname(__file__), "..", "data")
 
-    # TODO: implement this (~10-12 lines)
-    raise NotImplementedError("TODO 2: Complete the interactive loop")
+    vector_store = build_knowledge_base(data_dir)
+
+    print("Loading LLM (first run downloads ~1GB)...")
+    llm = get_llm()
+    print("  Done!\n")
+
+    print("Ask a question about our services, pricing, or process.")
+    print("Type 'quit' to exit.\n")
+
+    while True:
+        question = input("> ").strip()
+
+        if question.lower() in EXIT_COMMANDS:
+            print("Goodbye!")
+            return
+
+        print(format_result(ask_question(vector_store, llm, question)))
+        print()
 
 
 if __name__ == "__main__":
