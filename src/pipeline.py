@@ -14,6 +14,9 @@ Useful docs:
 
 import argparse
 import os
+import sys
+from typing import Any, Callable, Dict, List
+
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 from src.knowledge_base import build_knowledge_base
 
@@ -67,7 +70,12 @@ Answer:"""
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # TODO 1: Implement ask_question
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-def ask_question(vector_store, llm, question: str, k: int = TOP_K) -> dict:
+def ask_question(
+    vector_store: Any,
+    llm: Callable[[str], List[Dict[str, str]]],
+    question: str,
+    k: int = TOP_K,
+) -> Dict[str, Any]:
     """Retrieve relevant chunks and generate an answer.
 
     Args:
@@ -80,16 +88,31 @@ def ask_question(vector_store, llm, question: str, k: int = TOP_K) -> dict:
         dict with two keys:
             "answer"  -> str: the generated answer
             "sources" -> list[str]: the chunk texts that were retrieved
+
+    Raises:
+        ValueError: if the question is empty or only whitespace.
     """
-    # Retrieve the most semantically similar chunks.
+    if not isinstance(question, str) or not question.strip():
+        raise ValueError("question must be a non-empty string")
+
+    question = question.strip()
+
+    # 1. Retrieve the k most semantically similar chunks.
     docs = vector_store.similarity_search(question, k=k)
     sources = [doc.page_content for doc in docs]
 
-    # Ground the prompt in those chunks.
+    # Nothing indexed (or nothing similar) — don't invent an answer.
+    if not sources:
+        return {
+            "answer": "I don't have enough information to answer that.",
+            "sources": [],
+        }
+
+    # 2/3. Build the grounded prompt from the retrieved context.
     context = "\n\n".join(sources)
     prompt = PROMPT_TEMPLATE.format(context=context, question=question)
 
-    # Generate, and return only the model's text (not the prompt).
+    # 4. Generate, and return only the model's text (not the prompt).
     result = llm(prompt)
     answer = result[0]["generated_text"].strip()
 
@@ -99,7 +122,7 @@ def ask_question(vector_store, llm, question: str, k: int = TOP_K) -> dict:
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # TODO 2: Complete the interactive loop
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-def format_result(result: dict, preview: int = SOURCE_PREVIEW_CHARS) -> str:
+def format_result(result: Dict[str, Any], preview: int = SOURCE_PREVIEW_CHARS) -> str:
     """Render an ask_question() result for the terminal."""
     lines = ["", "📄 Sources:"]
     for i, source in enumerate(result["sources"], start=1):
@@ -112,7 +135,7 @@ def format_result(result: dict, preview: int = SOURCE_PREVIEW_CHARS) -> str:
     return "\n".join(lines)
 
 
-def main():
+def main() -> None:
     """Interactive Q&A loop (or a single answer via --query)."""
     default_data_dir = os.path.join(os.path.dirname(__file__), "..", "data")
 
@@ -136,27 +159,50 @@ def main():
     )
     args = parser.parse_args()
 
-    vector_store = build_knowledge_base(args.data_dir)
+    if not os.path.isdir(args.data_dir):
+        sys.exit(f"Error: data directory not found: {args.data_dir}")
+    if args.k < 1:
+        sys.exit("Error: -k must be at least 1")
+
+    # 1. Build the knowledge base and load the model.
+    try:
+        vector_store = build_knowledge_base(args.data_dir)
+    except Exception as exc:
+        sys.exit(f"Error: failed to build the knowledge base: {exc}")
 
     print("Loading LLM (first run downloads ~1GB)...")
     llm = get_llm()
     print("  Done!\n")
 
+    # 2. Single-shot mode.
     if args.query:
-        print(format_result(ask_question(vector_store, llm, args.query, k=args.k)))
+        try:
+            print(format_result(ask_question(vector_store, llm, args.query, k=args.k)))
+        except ValueError as exc:
+            sys.exit(f"Error: {exc}")
         return
 
+    # 3. Interactive mode.
     print("Ask a question about our services, pricing, or process.")
     print("Type 'quit' to exit.\n")
 
     while True:
-        question = input("> ").strip()
+        try:
+            question = input("> ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print("\nGoodbye!")
+            return
 
+        if not question:
+            continue
         if question.lower() in EXIT_COMMANDS:
             print("Goodbye!")
             return
 
-        print(format_result(ask_question(vector_store, llm, question, k=args.k)))
+        try:
+            print(format_result(ask_question(vector_store, llm, question, k=args.k)))
+        except Exception as exc:
+            print(f"\n⚠️  Sorry, something went wrong answering that: {exc}")
         print()
 
 
