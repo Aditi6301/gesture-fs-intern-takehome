@@ -174,8 +174,9 @@ def main() -> None:
     llm = get_llm()
     print("  Done!\n")
 
-    # 2. Single-shot mode.
-    if args.query:
+    # 2. Single-shot mode. Test `is not None` so `--query ""` is rejected as
+    # empty input rather than falling through to the REPL.
+    if args.query is not None:
         try:
             print(format_result(ask_question(vector_store, llm, args.query, k=args.k)))
         except ValueError as exc:

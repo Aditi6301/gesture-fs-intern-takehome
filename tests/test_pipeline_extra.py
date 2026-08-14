@@ -9,9 +9,12 @@ Run: pytest tests/test_pipeline_extra.py -v
 """
 
 import os
+import sys
+from types import SimpleNamespace
 
 import pytest
 
+import src.pipeline as pipeline
 from src.knowledge_base import build_knowledge_base
 from src.pipeline import PROMPT_TEMPLATE, ask_question, format_result
 
@@ -135,6 +138,47 @@ class TestFormatResult:
     def test_handles_empty_sources(self):
         out = format_result({"answer": "no idea", "sources": []})
         assert "💬 Answer: no idea" in out
+
+
+# ────────────────────────────────
+# Command-line entry point
+# ────────────────────────────────
+class TestCommandLine:
+    """main() with the model and index stubbed out, so these stay fast."""
+
+    @staticmethod
+    def _run(monkeypatch, argv):
+        empty_store = SimpleNamespace(similarity_search=lambda q, k=3: [])
+        monkeypatch.setattr(pipeline, "build_knowledge_base", lambda d: empty_store)
+        monkeypatch.setattr(pipeline, "get_llm", lambda: lambda p: [{"generated_text": "x"}])
+        monkeypatch.setattr(sys, "argv", ["pipeline"] + argv)
+
+        # Reaching the REPL is a failure for every case below.
+        def no_repl(*args, **kwargs):
+            raise AssertionError("fell through to the interactive loop")
+
+        monkeypatch.setattr("builtins.input", no_repl)
+        return pipeline.main()
+
+    def test_empty_query_does_not_start_the_repl(self, monkeypatch):
+        """--query "" is empty input, not an absent flag."""
+        with pytest.raises(SystemExit):
+            self._run(monkeypatch, ["--query", ""])
+
+    def test_whitespace_query_is_rejected(self, monkeypatch):
+        with pytest.raises(SystemExit):
+            self._run(monkeypatch, ["--query", "   "])
+
+    def test_valid_query_runs_single_shot(self, monkeypatch):
+        self._run(monkeypatch, ["--query", "What does the Growth package cost?"])
+
+    def test_missing_data_dir_exits(self, monkeypatch):
+        with pytest.raises(SystemExit):
+            self._run(monkeypatch, ["--data-dir", "/nonexistent", "--query", "hi"])
+
+    def test_invalid_k_exits(self, monkeypatch):
+        with pytest.raises(SystemExit):
+            self._run(monkeypatch, ["-k", "0", "--query", "hi"])
 
 
 # ────────────────────────────────
