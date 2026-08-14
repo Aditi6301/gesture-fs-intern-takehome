@@ -16,6 +16,9 @@ import os
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 from src.knowledge_base import build_knowledge_base
 
+# Number of chunks to retrieve per question.
+TOP_K = 3
+
 
 # ──────────────────────────────────────────────
 # Provided: local LLM (no API key needed)
@@ -61,15 +64,6 @@ Answer:"""
 def ask_question(vector_store, llm, question: str) -> dict:
     """Retrieve relevant chunks and generate an answer.
 
-    Steps:
-      1. Use vector_store.similarity_search(question, k=3) to get
-         the top 3 most relevant document chunks.
-      2. Combine the chunk text into a single context string.
-         (Hint: each chunk has a .page_content attribute)
-      3. Format the PROMPT_TEMPLATE with the context and question.
-      4. Pass the formatted prompt to llm(...) and extract the
-         generated text from the result.
-
     Args:
         vector_store: FAISS vector store from knowledge_base.py
         llm: Callable from get_llm()
@@ -80,8 +74,19 @@ def ask_question(vector_store, llm, question: str) -> dict:
             "answer"  -> str: the generated answer
             "sources" -> list[str]: the chunk texts that were retrieved
     """
-    # TODO: implement this (~6-8 lines)
-    raise NotImplementedError("TODO 1: Implement ask_question")
+    # Retrieve the most semantically similar chunks.
+    docs = vector_store.similarity_search(question, k=TOP_K)
+    sources = [doc.page_content for doc in docs]
+
+    # Ground the prompt in those chunks.
+    context = "\n\n".join(sources)
+    prompt = PROMPT_TEMPLATE.format(context=context, question=question)
+
+    # Generate, and return only the model's text (not the prompt).
+    result = llm(prompt)
+    answer = result[0]["generated_text"].strip()
+
+    return {"answer": answer, "sources": sources}
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
