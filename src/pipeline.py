@@ -12,6 +12,7 @@ Useful docs:
   - HuggingFace pipelines: https://python.langchain.com/docs/integrations/llms/huggingface_pipelines/
 """
 
+import argparse
 import os
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 from src.knowledge_base import build_knowledge_base
@@ -66,13 +67,14 @@ Answer:"""
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # TODO 1: Implement ask_question
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-def ask_question(vector_store, llm, question: str) -> dict:
+def ask_question(vector_store, llm, question: str, k: int = TOP_K) -> dict:
     """Retrieve relevant chunks and generate an answer.
 
     Args:
         vector_store: FAISS vector store from knowledge_base.py
         llm: Callable from get_llm()
         question: The user's question string
+        k: How many chunks to retrieve
 
     Returns:
         dict with two keys:
@@ -80,7 +82,7 @@ def ask_question(vector_store, llm, question: str) -> dict:
             "sources" -> list[str]: the chunk texts that were retrieved
     """
     # Retrieve the most semantically similar chunks.
-    docs = vector_store.similarity_search(question, k=TOP_K)
+    docs = vector_store.similarity_search(question, k=k)
     sources = [doc.page_content for doc in docs]
 
     # Ground the prompt in those chunks.
@@ -111,14 +113,38 @@ def format_result(result: dict, preview: int = SOURCE_PREVIEW_CHARS) -> str:
 
 
 def main():
-    """Interactive Q&A loop."""
-    data_dir = os.path.join(os.path.dirname(__file__), "..", "data")
+    """Interactive Q&A loop (or a single answer via --query)."""
+    default_data_dir = os.path.join(os.path.dirname(__file__), "..", "data")
 
-    vector_store = build_knowledge_base(data_dir)
+    parser = argparse.ArgumentParser(
+        description="Ask questions about the marketing agency's documentation."
+    )
+    parser.add_argument(
+        "--query",
+        help="Answer a single question and exit, instead of starting the REPL.",
+    )
+    parser.add_argument(
+        "--data-dir",
+        default=default_data_dir,
+        help="Directory of .txt documents to index (default: ./data).",
+    )
+    parser.add_argument(
+        "-k",
+        type=int,
+        default=TOP_K,
+        help=f"Number of chunks to retrieve per question (default: {TOP_K}).",
+    )
+    args = parser.parse_args()
+
+    vector_store = build_knowledge_base(args.data_dir)
 
     print("Loading LLM (first run downloads ~1GB)...")
     llm = get_llm()
     print("  Done!\n")
+
+    if args.query:
+        print(format_result(ask_question(vector_store, llm, args.query, k=args.k)))
+        return
 
     print("Ask a question about our services, pricing, or process.")
     print("Type 'quit' to exit.\n")
@@ -130,7 +156,7 @@ def main():
             print("Goodbye!")
             return
 
-        print(format_result(ask_question(vector_store, llm, question)))
+        print(format_result(ask_question(vector_store, llm, question, k=args.k)))
         print()
 
 
