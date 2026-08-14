@@ -72,6 +72,12 @@ resolved to `transformers` 5.x and `torch` 2.13 — well ahead of what the brief
 assumed. All 33 tests pass there. I left the file untouched rather than pin it,
 since it was provided.
 
+**On tooling.** I used Claude as a review partner on this — it caught the
+`--query ""` fall-through and pushed me to measure the `max_new_tokens` claim
+rather than assert it. Commits carry `Co-Authored-By` trailers accordingly. The
+trade-off decisions, the test design, and the choices about what *not* to
+change are mine, and I'm happy to walk through any of them.
+
 ## 🎯 Objective
 
 Build an **interactive Q&A chatbot** for a marketing agency using LangChain and a local LLM. A potential client can ask questions about services, pricing, and process — and get answers pulled from the agency's docs.
