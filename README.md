@@ -15,7 +15,7 @@ downloads ~1.2GB of models, then they're cached.
 
 ```bash
 python -m src.pipeline --query "How much does the Growth package cost?"  # single question
-pytest tests/ -v                                                         # 33 tests
+pytest tests/ -v                                                         # 40 tests
 ```
 
 <details>
@@ -25,9 +25,9 @@ pytest tests/ -v                                                         # 33 te
 > How much does the Growth package cost?
 
 📄 Sources:
-  1. GROWTH PACKAGE — $5,500/month
-  2. GROWTH PACKAGE — $5,500/month Best for scaling businesses that need a full-funnel...
-  3. ENTERPRISE PACKAGE — $12,000/month
+  1. [pricing.txt] GROWTH PACKAGE — $5,500/month
+  2. [pricing.txt] GROWTH PACKAGE — $5,500/month Best for scaling businesses that need...
+  3. [pricing.txt] ENTERPRISE PACKAGE — $12,000/month
 
 💬 Answer: $5,500/month
 ```
@@ -43,6 +43,11 @@ into the provided prompt template, and returns the answer plus the raw chunk
 text so the CLI can cite sources. `main()` wraps that in a REPL, with rendering
 split into `format_result()` so display logic is testable without loading a
 model. The commit history walks through each decision in order.
+
+**Citations.** Each source is labelled with the file it came from, read from
+the `metadata["source"]` that `TextLoader` already records. It is exposed as a
+separate `source_files` key rather than by changing the shape of `sources`,
+since the provided tests join those strings directly.
 
 **Retrieval.** Retrieval returns the 3 nearest chunks as specified. On some
 queries, ranks 2–3 are weak matches from the Acme Corp documents in `data/`,
@@ -64,13 +69,15 @@ I measured this across a range of questions: the worst case was 376 tokens, so
 there is comfortable headroom at k=3 and no workaround is needed.
 
 **Bonus items.** All four: error handling (empty input, missing `--data-dir`,
-invalid `-k`, EOF/Ctrl-C), a `--query` flag, 23 extra tests in
+invalid `-k`, EOF/Ctrl-C), a `--query` flag, 30 extra tests in
 `tests/test_pipeline_extra.py`, and type hints throughout.
 
 **Environment note.** `requirements.txt` is unpinned, so on Python 3.14 it
 resolved to `transformers` 5.x and `torch` 2.13 — well ahead of what the brief
-assumed. All 33 tests pass there. I left the file untouched rather than pin it,
-since it was provided.
+assumed. I left the file untouched rather than pin it, since it was provided,
+and verified the suite separately on Python 3.12 and 3.14 — because the file
+specifies lower bounds only, both resolve to the same current versions, and all
+40 tests pass on each.
 
 **On tooling.** I used Claude as a review partner on this — it caught the
 `--query ""` fall-through and pushed me to measure the `max_new_tokens` claim
